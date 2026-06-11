@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Draft to Admit
 
-## Getting Started
+Free college essay reviews from a real student who's been through it.
 
-First, run the development server:
+Students submit their Common App and supplemental essays; the reviewer reads
+them in an admin dashboard, highlights passages with inline comments, scores
+six categories (Uniqueness, Voice, Hook, Authenticity, Flow, Conciseness),
+and writes a summary. Students get an email when feedback is ready.
+
+## Tech stack
+
+- [Next.js 15](https://nextjs.org) (App Router, TypeScript)
+- [Supabase](https://supabase.com) — Postgres, auth, RLS
+- [Tailwind CSS v4](https://tailwindcss.com) + shadcn/ui-style components
+- [Resend](https://resend.com) — email notifications
+
+## Setup
+
+### 1. Supabase
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. Open the SQL editor and run `supabase/migrations/00001_initial_schema.sql`.
+   This creates the `profiles`, `essays`, `feedback`, and `inline_comments`
+   tables, RLS policies, and a trigger that creates a profile on signup.
+3. Copy the project URL and anon key from **Settings → API**.
+
+### 2. Environment
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Fill in:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Where to get it |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Settings → API |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Settings → API |
+| `RESEND_API_KEY` | [resend.com/api-keys](https://resend.com/api-keys) |
+| `RESEND_FROM_EMAIL` | A verified sender, e.g. `Draft to Admit <hello@yourdomain.com>` |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` locally, your domain in production |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+If `RESEND_API_KEY` is unset, feedback still saves — the email is just skipped.
 
-## Learn More
+### 3. Run
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 4. Make yourself the admin
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Sign up through the site, then run in the Supabase SQL editor:
 
-## Deploy on Vercel
+```sql
+update public.profiles set role = 'admin' where email = 'you@example.com';
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Your account now sees the **Admin** nav link and the `/admin` routes.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## How it works
+
+| Route | Who | What |
+| --- | --- | --- |
+| `/` | public | Landing page |
+| `/signup`, `/login` | public | Email + password auth via Supabase |
+| `/submit` | students | Essay intake form with live word count |
+| `/dashboard` | students | All submissions with status + scores |
+| `/dashboard/essay/[id]` | students | Annotated essay, scores, summary |
+| `/admin` | admin | Queue sorted by submission date, filterable by status |
+| `/admin/review/[id]` | admin | Select text → inline comment; score + summarize |
+
+Notes on behavior:
+
+- Opening a pending essay from the admin queue automatically marks it
+  **In Review**.
+- The overall score is auto-calculated as the average of the six category
+  scores.
+- Submitting feedback marks the essay **Complete** and emails the student a
+  link to their feedback. Re-submitting updates the existing feedback.
+- Inline comment positions are stored as `start_index`/`end_index` character
+  offsets into the essay text.
+- All access control is enforced twice: in middleware/server components and
+  by Postgres RLS policies.

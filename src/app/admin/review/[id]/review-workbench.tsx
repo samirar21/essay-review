@@ -126,12 +126,13 @@ export function ReviewWorkbench({
         endIndex: selection.end,
         commentText: text,
       });
-      if (result.error) {
+      if (result.error !== undefined) {
         setCommentError(result.error);
         return;
       }
+      const saved = result.comment;
       setComments((prev) =>
-        [...prev, result.comment].sort((a, b) => a.start_index - b.start_index)
+        [...prev, saved].sort((a, b) => a.start_index - b.start_index)
       );
       setSelection(null);
       setDraft("");
